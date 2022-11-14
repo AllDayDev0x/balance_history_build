@@ -8,6 +8,7 @@ const Web3 = require("web3");
 const PnlTrak = require("./models/PnlTrak");
 const WalletBalance = require("./models/walletBalance");
 const StartBalance = require("./models/Wallet");
+
 const app = express();
 const port = config.port;
 let PNLItem = "D";
@@ -18,8 +19,31 @@ let StartYear, StartMonth, StartDate;
 let Data = {};
 let TotalEthBalance;
 let TotalUSDBalance;
+let TokenBalance = { usdt: 0, usdc: 0, dai: 0 };
 let DaysOfMonth = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 mongoose.connect("mongodb://localhost:27017/PnlTrack");
+
+const tokenABI = [{
+	"constant": true,
+	"inputs": [
+		{
+			"internalType": "address",
+			"name": "",
+			"type": "address"
+		}
+	],
+	"name": "balanceOf",
+	"outputs": [
+		{
+			"internalType": "uint256",
+			"name": "",
+			"type": "uint256"
+		}
+	],
+	"payable": false,
+	"stateMutability": "view",
+	"type": "function"
+}];
 const getUSD_Rate = async () => {
 	let data = await axios.get(`https://api.etherscan.io/api?module=stats&action=ethprice&apikey=${config.EtherScan_API_KEY}`);
 
@@ -203,6 +227,34 @@ const RealTimeFunction = async () => {
 	}
 	TotalEthBalance = totalEthBalance;
 	TotalUSDBalance = totalUSDBalance;
+	let tokenBalances = []
+	const usdtContract = new web3.eth.Contract(tokenABI, config.usdtAddy);
+	const usdcContract = new web3.eth.Contract(tokenABI, config.usdcAddy);
+	const daiContract = new web3.eth.Contract(tokenABI, config.daiAddy);
+	let tokenPromises = [];
+	config.accounts.map((account, index) => {
+
+
+		let promise = new Promise(async (resolve, reject) => {
+			tokenBalances[index] = {};
+			tokenBalances[index].usdt = parseInt(await usdtContract.methods.balanceOf(account).call() /10**6);
+			tokenBalances[index].usdc =parseInt( await usdcContract.methods.balanceOf(account).call()/10**6);
+			tokenBalances[index].dai = parseInt(await daiContract.methods.balanceOf(account).call()/10**6);
+			// console.log(tokenBalances[index],"balance")
+			resolve();
+		});
+		tokenPromises.push(promise);
+
+	});
+	await Promise.all(tokenPromises);
+	TokenBalance = { usdt: 0, usdc: 0, dai: 0 };
+	tokenBalances.map(item => {
+		TokenBalance.usdt += item.usdt*1;
+		TokenBalance.usdc += item.usdc*1;
+		TokenBalance.dai += item.dai*1;
+		
+	})
+
 	await getData();
 	// console.error("dd")
 	broadcast(JSON.stringify({ PNLItem, data: Data }))
@@ -360,8 +412,45 @@ const getData = async () => {
 	}
 	Data.TotalEthBalance = TotalEthBalance;
 	Data.TotalUSDBalance = TotalUSDBalance;
+	Data.tokenBalance = TokenBalance;
 	// console.log(Data, "data");
+	Data.dailyPNL = await getDailyPNL();
+	Data.monthlyPNL = await getMonthlyPNL();
+	Data.yearlyPNL = await getYearlyPNL();
 	return Data;
+}
+
+
+const getYearlyPNL = async ()=>{
+	let nowDate = new Date();
+	let beforeData = await PnlTrak.find({Year:{$lt : nowDate.getFullYear()}}).sort({
+		date:-1, Month:-1, Year: -1
+	});
+console.log(beforeData,"test")
+	if(beforeData.length ==0){
+		beforeData = await StartBalance.findOne({});
+	}
+	else{
+
+		beforeData = beforeData[0];
+	}
+	
+	let nowData = await PnlTrak.findOne({Year:nowDate.getFullYear(), Month:nowDate.getMonth()+1, date: nowDate.getDate()});
+	if(beforeData== null || nowData == null){
+		console.error("error in getting Yearly Pnl");
+	}
+	return nowData.totalEthBalance - beforeData.totalEthBalance;
+}
+const getMonthlyPNL = async ()=>{
+	let nowDate = new Date();
+	let data = await PnlTrak.find({Year:nowDate.getFullYear(), Month: nowDate.getMonth()+1}).sort({date:1});
+	return data[data.length -1].totalEthBalance - data[0].totalEthBalance + data[0].EPnl*1;
+
+}
+const getDailyPNL = async ()=>{
+	let nowDate = new Date();
+	let data = await PnlTrak.findOne({Year:nowDate.getFullYear(), Month:nowDate.getMonth() +1, date: nowDate.getDate()});
+	return data.EPnl;
 }
 
 const wss = new ws.Server({ noServer: true });   // webSocket library
@@ -412,7 +501,7 @@ function broadcast(data) {
 }
 app.use(express.static(__dirname + '/build'));
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "./build/index.html"));
+	res.sendFile(path.join(__dirname, "./build/index.html"));
 });
 wss.on('connection', handleConnection);
 const server = app.listen(port);
