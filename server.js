@@ -180,22 +180,24 @@ const RealTimeFunction = async () => {
 	let beforeDateBalance;
 	// console.log("start",StartYear, StartMonth, StartDate)
 	if (nowDate.getFullYear() == StartYear && nowDate.getMonth() + 1 == StartMonth && nowDate.getDate() == StartDate) {
-		beforeDateBalance = await StartBalance.findOne({});
+		beforeDateBalance = await StartBalance.find({});
 	} else {
 		if (nowDate.getDate() == 1) {
 			if (nowDate.getMonth() == 0) {
 
-				beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear() - 1, Month: 12 }).sort({ date: -1 }).limit(1)[0];
+				beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear() - 1, Month: 12 }).sort({ date: -1 }).limit(1);
 			} else {
 
 
-				beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear(), Month: { $lt: nowDate.getMonth() + 1 } }).sort({ date: -1 }).limit(1)[0];
+				beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear(), Month: { $lt: nowDate.getMonth() + 1 } }).sort({ date: -1 }).limit(1);
 			}
 		} else {
 
-			beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear(), Month: nowDate.getMonth() + 1, date: { $lt: nowDate.getDate() } }).sort({ date: -1 }).limit(1)[0];
+			beforeDateBalance = await PnlTrak.find({ Year: nowDate.getFullYear(), Month: nowDate.getMonth() + 1, date: { $lt: nowDate.getDate() } }).sort({ date: -1 }).limit(1);
+
 		}
 	}
+	beforeDateBalance =beforeDateBalance[0];
 	let EPnl = totalEthBalance - beforeDateBalance.totalEthBalance;
 	let DPnl = totalUSDBalance - beforeDateBalance.totalUSDBalance;
 
@@ -294,7 +296,8 @@ const getData = async () => {
 			beforeMonthBalance = await StartBalance.findOne({});
 		}
 		else {
-			beforeMonthBalance = await PnlTrak.find({ Year: { $lt: Year * 1 } }).sort({ date: -1, Month: -1, })[0];
+			beforeMonthBalance = await PnlTrak.find({ Year: { $lt: Year * 1 } }).sort({ date: -1, Month: -1, });
+			beforeMonthBalance = beforeMonthBalance[0];
 		}
 		// console.log("befiore", beforeMonthBalance, MonthPnlCollection, Year, "monthly")
 		let MonthlyPnl = [];
